@@ -1,0 +1,128 @@
+"""
+BODY RECONSTRUCTION SCRIPTS - QUICK REFERENCE
+==============================================
+
+PRIMARY SCRIPT (Use This One!) **UPDATED 2025-12-01**
+------------------------------------------------------
+📁 universal_body_assembly.py   ⭐ NEW - RECOMMENDED
+   - Loads ALL primary DICOM series (not just 2!)
+   - Handles different voxel spacings (0.7mm to 5mm)
+   - Resamples to common space using scipy
+   - Merges overlapping regions with weighted averaging
+   - Skips reformatted views (sagittal/coronal)
+   - Works with ALL series found by dicom_seperate.py
+   
+   RESULTS:
+     • Jarek: 6 series merged (previously only 2)
+     • Maria: 6 series merged (previously only 2)
+     • Jan: 7 series merged (previously only 2)
+   
+   USAGE:
+     1. Edit line 27: DATASET = "DICOM-Jarek"  (or "DICOM-Maria" / "DICOM-Jan")
+     2. Edit line 31: TARGET_SPACING = [0.7, 0.7, 1.0]  (optional)
+     3. Run: python universal_body_assembly.py
+     4. View 3D result with all series merged
+
+   DOCUMENTATION:
+     See UNIVERSAL_ASSEMBLY_DOCS.md for complete technical details
+
+ALTERNATIVE (Previous System)
+------------------------------
+📁 complete_body_reconstruction.py
+   - Anatomical classification approach
+   - Only selects 2 "best" series per region
+   - Good for understanding body part classification
+   - Limited: misses many available series
+   
+   USE ONLY IF: You need anatomical region labels
+   OTHERWISE: Use universal_body_assembly.py
+
+DIAGNOSTIC TOOLS
+----------------
+📁 diagnostic/debug_series_content.py
+   - Shows all series in each dataset
+   - Lists slice counts, Z-ranges, orientations
+   - Useful for understanding dataset structure
+
+   USAGE:
+     python diagnostic/debug_series_content.py
+
+LEGACY/ARCHIVE SCRIPTS
+----------------------
+These are older experimental versions, superseded by complete_body_reconstruction.py:
+
+📁 archive/auto_body_assembly.py
+   - Earlier 2-series only approach
+   - Used before multi-part support
+
+📁 archive/complete_body_assembler.py  
+   - Intermediate multi-part version
+   - Had issues with classification
+
+OTHER SCRIPTS IN THIS DIRECTORY
+--------------------------------
+These are unrelated to body reconstruction:
+
+- dicom_seperate.py: DICOM file organization
+- export_bone.py: Bone segmentation export
+- fast_tissue.py: Tissue segmentation
+- fast_dicom.py: Fast DICOM viewer
+- threshold_sliding_body_noair.py: Air removal preprocessing
+- legs_in_place copy.py: Leg positioning tool
+- investigation_scripto.py: General investigation tool
+
+DATASETS
+--------
+Location: /Users/yoad/Desktop/CLS year 2/SVandVR/Massgraves/data/
+
+1. DICOM-Maria
+   - 2 series (HEAD_THORAX + PELVIS_LEGS)
+   - Result: 319 slices (159.5 cm), 100% complete
+
+2. DICOM-Jan  
+   - 7 axial series (multiple overlapping torso scans)
+   - Result: 389 slices (194.5 cm), 100% complete
+
+3. DICOM-Jarek
+   - Separate thorax + multiple abdomen series
+   - Result: 1084 slices (542.0 cm), 75% complete (no head)
+
+RESULTS VALIDATION
+------------------
+✓ All three datasets successfully assemble
+✓ Correct anatomical ordering (head → feet)
+✓ Proper overlap detection and stitching
+✓ Completeness validation working
+
+DOCUMENTATION
+-------------
+See README.md for comprehensive documentation including:
+- Algorithm details
+- Feature classification system
+- Troubleshooting guide
+- Technical architecture
+- Future enhancements
+
+QUICK DEBUG
+-----------
+If results look wrong:
+
+1. Check what series are being loaded:
+   python diagnostic/debug_series_content.py
+
+2. Check console output for classification:
+   Step 2 shows: "→ REGION_NAME (confidence: XX%, Z: min to max mm)"
+
+3. Verify overlap quality:
+   Step 5 shows: "Overlap: N slices (corr: X.XXX)"
+
+4. Check completeness:
+   Step 6 shows: ✓/✗ for head/thorax/abdomen/legs
+
+Normal overlap correlations: 0.3-0.7 (tissue discontinuity at junctions is expected!)
+
+CONTACT
+-------
+For issues or questions, refer to README.md or check the code comments.
+All scripts have comprehensive docstrings.
+"""
