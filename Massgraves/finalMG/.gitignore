@@ -1,0 +1,4 @@
+# Ignore NIfTI data folders
+nifti-ordered/
+nifti-raw/
+nifti-stitched/
