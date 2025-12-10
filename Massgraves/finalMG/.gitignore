@@ -2,3 +2,6 @@
 nifti-ordered/
 nifti-raw/
 nifti-stitched/
+nifti-final/
+merged-bodies/
+obj-final/
