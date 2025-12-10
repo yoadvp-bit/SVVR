@@ -85,11 +85,13 @@ class AxialOrderingTool:
             })
             
             array = sitk.GetArrayFromImage(sitk_img)
+            spacing = sitk_img.GetSpacing()  # (X, Y, Z) spacing in mm
             self.volume_info.append({
                 'filename': filepath.name,
                 'path': filepath,
                 'shape': array.shape,
-                'size_mb': filepath.stat().st_size / (1024 * 1024)
+                'size_mb': filepath.stat().st_size / (1024 * 1024),
+                'z_spacing': spacing[2]  # Z-spacing (slice thickness) in mm
             })
         
         print("✓ All previews generated\n")
@@ -389,7 +391,8 @@ class AxialOrderingTool:
                 </td>
                 <td style="vertical-align: middle;">
                     <strong>{info['filename']}</strong><br>
-                    <small>Shape: {info['shape']} | Size: {info['size_mb']:.1f} MB</small>
+                    <small>Shape: {info['shape']} | Size: {info['size_mb']:.1f} MB</small><br>
+                    <small>Z-spacing: {info['z_spacing']:.2f} mm</small>
                 </td>
                 <td style="vertical-align: middle;">
                     <input type="number" id="order_{idx}" name="order_{idx}" 
@@ -666,14 +669,14 @@ def find_nifti_data_folder():
 
 if __name__ == '__main__':
     # ==================== CONFIGURATION ====================
-    PATIENT = 'Gerda'  # Change this to: 'Maria', 'Jarek', 'Jan', 'Gerda', 'Loes', 'Joop'
+    PATIENT = 'Jarek'  # Change this to: 'Maria', 'Jarek', 'Jan', 'Gerda', 'Loes', 'Joop'
     # =======================================================
     
     # Find nifti-raw folder
     nifti_raw = find_nifti_data_folder()
     
     if nifti_raw is None:
-        print("✗ ERROR: Could not find 'nifti-raw' folder") 
+        print("✗ ERROR: Could not find 'nifti-raw' folder")
         exit(1)
     
     patient_folder = os.path.join(nifti_raw, f'NIfTI-{PATIENT}')
