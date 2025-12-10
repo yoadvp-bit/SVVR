@@ -666,14 +666,14 @@ def find_nifti_data_folder():
 
 if __name__ == '__main__':
     # ==================== CONFIGURATION ====================
-    PATIENT = 'Maria'  # Change this to: 'Maria', 'Jarek', 'Jan', 'Gerda', 'Loes', 'Joop'
+    PATIENT = 'Gerda'  # Change this to: 'Maria', 'Jarek', 'Jan', 'Gerda', 'Loes', 'Joop'
     # =======================================================
     
     # Find nifti-raw folder
     nifti_raw = find_nifti_data_folder()
     
     if nifti_raw is None:
-        print("✗ ERROR: Could not find 'nifti-raw' folder")
+        print("✗ ERROR: Could not find 'nifti-raw' folder") 
         exit(1)
     
     patient_folder = os.path.join(nifti_raw, f'NIfTI-{PATIENT}')
