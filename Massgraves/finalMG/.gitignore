@@ -2,9 +2,13 @@
 nifti-ordered/
 nifti-raw/
 nifti-stitched/
+<<<<<<< HEAD
 nifti-final/
 merged-bodies/
 obj-final/
 nifti-resampled/
 nifti-stitched-resampled/
 merged-bodies-resampled/
+=======
+data/
+>>>>>>> a5762deea8d8a1373f985bdfb91e81f36d71fdd8
