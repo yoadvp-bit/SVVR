@@ -157,8 +157,8 @@ def main():
     # Read from nifti-stitched folder (in finalMG)
     script_dir = os.path.dirname(os.path.abspath(__file__))
     massgraves_root = os.path.dirname(script_dir)
-    source_folder = os.path.join(massgraves_root, 'finalMG', 'nifti-final')
-    file_suffix = '_final.nii'
+    source_folder = os.path.join(massgraves_root, 'finalMG', 'nifti-stitched')
+    file_suffix = '_stitched.nii'
     
     print("=" * 80)
     print("VISUALIZING STITCHED BODIES INDIVIDUALLY")

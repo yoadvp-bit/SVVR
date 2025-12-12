@@ -5,3 +5,6 @@ nifti-stitched/
 nifti-final/
 merged-bodies/
 obj-final/
+nifti-resampled/
+nifti-stitched-resampled/
+merged-bodies-resampled/

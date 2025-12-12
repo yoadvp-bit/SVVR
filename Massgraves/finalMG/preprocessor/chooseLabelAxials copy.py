@@ -91,7 +91,9 @@ class AxialOrderingTool:
                 'path': filepath,
                 'shape': array.shape,
                 'size_mb': filepath.stat().st_size / (1024 * 1024),
-                'z_spacing': spacing[2]  # Z-spacing (slice thickness) in mm
+                'x_spacing': spacing[0],  # X-spacing in mm
+                'y_spacing': spacing[1],  # Y-spacing in mm
+                'z_spacing': spacing[2]   # Z-spacing (slice thickness) in mm
             })
         
         print("✓ All previews generated\n")
@@ -392,7 +394,7 @@ class AxialOrderingTool:
                 <td style="vertical-align: middle;">
                     <strong>{info['filename']}</strong><br>
                     <small>Shape: {info['shape']} | Size: {info['size_mb']:.1f} MB</small><br>
-                    <small>Z-spacing: {info['z_spacing']:.2f} mm</small>
+                    <small>Spacing (X, Y, Z): ({info['x_spacing']:.4f}, {info['y_spacing']:.4f}, {info['z_spacing']:.2f}) mm</small>
                 </td>
                 <td style="vertical-align: middle;">
                     <input type="number" id="order_{idx}" name="order_{idx}" 
@@ -669,7 +671,7 @@ def find_nifti_data_folder():
 
 if __name__ == '__main__':
     # ==================== CONFIGURATION ====================
-    PATIENT = 'Jarek'  # Change this to: 'Maria', 'Jarek', 'Jan', 'Gerda', 'Loes', 'Joop'
+    PATIENT = 'Maria'  # Change this to: 'Maria', 'Jarek', 'Jan', 'Gerda', 'Loes', 'Joop'
     # =======================================================
     
     # Find nifti-raw folder

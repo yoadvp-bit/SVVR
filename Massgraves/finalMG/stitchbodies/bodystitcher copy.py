@@ -24,15 +24,15 @@ from vtk.util import numpy_support
 # CONFIGURATION
 # ============================================================================
 
-# Path to nifti-ordered folder (auto-detect relative to script location)
+# Path to nifti-resampled folder (auto-detect relative to script location)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 FINALMG_DIR = os.path.dirname(SCRIPT_DIR)  # Parent of stitchbodies = finalMG
-NIFTI_ORDERED_BASE = os.path.join(FINALMG_DIR, 'nifti-ordered')
+NIFTI_RESAMPLED_BASE = os.path.join(FINALMG_DIR, 'nifti-resampled')
 
-# Bodies to process (names of patient folders in nifti-ordered)
+# Bodies to process (names of patient folders in nifti-resampled)
 PATIENT_NAMES = ['Maria', 'Jan', 'Jarek', 'Gerda', 'Joop', 'Loes']
 
-OUTPUT_DIR = os.path.join(FINALMG_DIR, 'nifti-stitched')
+OUTPUT_DIR = os.path.join(FINALMG_DIR, 'nifti-stitched-resampled')
 
 # IMPORTANT: Set numbering convention
 # If you numbered 1=HEAD, 2=MIDDLE, 3=FEET, use REVERSE_NUMBERING=False
@@ -46,7 +46,7 @@ REVERSE_NUMBERING = True  # Try True if body comes out upside down
 
 def load_ordered_volumes(patient_name):
     """
-    Load ordered NIfTI volumes for a patient from nifti-ordered folder.
+    Load ordered NIfTI volumes for a patient from nifti-resampled folder.
     Files are named like: 1_axial_xxx.nii, 2_axial_xxx.nii, etc.
     (Format created by chooseLabelAxials.py: {order_num}_{original_filename})
     Order goes from head (1) to toes (highest number).
@@ -55,7 +55,7 @@ def load_ordered_volumes(patient_name):
         dict: {1: path, 2: path, 3: path, ...} sorted by order number
         None if patient folder doesn't exist or has no ordered files
     """
-    patient_dir = os.path.join(NIFTI_ORDERED_BASE, patient_name)
+    patient_dir = os.path.join(NIFTI_RESAMPLED_BASE, patient_name)
     
     if not os.path.exists(patient_dir):
         print(f"  ⚠️  Patient folder not found: {patient_dir}")
@@ -116,68 +116,6 @@ def load_ordered_volumes(patient_name):
         print(f"  ℹ️  Skipped {len(skipped_files)} file(s) without numeric prefix")
     
     return sorted_volumes
-
-
-# ============================================================================
-# BED ARTIFACT REMOVAL (Noise Elimination)
-# ============================================================================
-
-def remove_bed_artifact(img, bed_threshold=-200):
-    """
-    Remove CT scanner bed artifact from volume.
-    The bed appears as separate connected component below/beside the patient.
-    
-    Strategy:
-    - For each axial slice, find the largest connected component (the patient)
-    - Remove everything else (bed is typically a smaller/separate component)
-    
-    Args:
-        img: SimpleITK Image
-        bed_threshold: HU threshold to detect solid structures
-    
-    Returns:
-        Cleaned SimpleITK Image with bed removed
-    """
-    from scipy.ndimage import label
-    
-    arr = sitk.GetArrayFromImage(img)
-    solid_mask = arr > bed_threshold
-    cleaned = np.copy(arr)
-    
-    print(f"      Removing bed artifact (threshold={bed_threshold} HU)...")
-    removed_voxels = 0
-    
-    # Process each axial slice
-    for z in range(arr.shape[0]):
-        slice_mask = solid_mask[z]
-        
-        if not slice_mask.any():
-            continue
-        
-        # Label connected components
-        labeled, num_features = label(slice_mask)
-        
-        if num_features <= 1:
-            continue  # Only one component, assume it's patient
-        
-        # Find largest component (patient body)
-        component_sizes = [(labeled == i).sum() for i in range(1, num_features + 1)]
-        largest_idx = np.argmax(component_sizes) + 1
-        patient_mask = (labeled == largest_idx)
-        
-        # Remove everything else
-        removed_mask = slice_mask & (~patient_mask)
-        cleaned[z][removed_mask] = -1024
-        removed_voxels += removed_mask.sum()
-    
-    if removed_voxels > 0:
-        print(f"      → Removed {removed_voxels:,} voxels (bed/artifacts)")
-    
-    # Create output image
-    cleaned_img = sitk.GetImageFromArray(cleaned)
-    cleaned_img.CopyInformation(img)
-    
-    return cleaned_img
 
 
 # ============================================================================
@@ -339,20 +277,11 @@ def fine_tune_xy_alignment(torso_img, legs_img, search_range_mm=30, step_mm=5):
 # IMPROVED: MULTI-SCALE Z SEARCH (Avoids Local Minima)
 # ============================================================================
 
-def calculate_slice_similarity(slice1, slice2, threshold=-300, use_soft_tissue=False):
+def calculate_slice_similarity(slice1, slice2, threshold=-300):
     """
-    Calculate similarity between two slices with adaptive scoring.
-    
-    Args:
-        slice1, slice2: 2D numpy arrays
-        threshold: Body detection threshold
-        use_soft_tissue: If True, use soft tissue mode (for bone gaps)
-    
-    Returns:
-        Combined score (higher is better)
+    Calculate similarity between two slices using multiple metrics.
+    Returns combined score (higher is better).
     """
-    from scipy.ndimage import sobel
-    
     # Create body masks
     mask1 = slice1 > threshold
     mask2 = slice2 > threshold
@@ -360,19 +289,12 @@ def calculate_slice_similarity(slice1, slice2, threshold=-300, use_soft_tissue=F
     if not mask1.any() or not mask2.any():
         return 0.0
     
-    # 1. Body IoU
-    body_intersection = np.logical_and(mask1, mask2).sum()
-    body_union = np.logical_or(mask1, mask2).sum()
-    body_iou = body_intersection / body_union if body_union > 0 else 0
+    # 1. IoU of body regions
+    intersection = np.logical_and(mask1, mask2).sum()
+    union = np.logical_or(mask1, mask2).sum()
+    iou = intersection / union if union > 0 else 0
     
-    # 2. Bone IoU (for normal alignment)
-    bone_mask1 = slice1 > 200
-    bone_mask2 = slice2 > 200
-    bone_intersection = np.logical_and(bone_mask1, bone_mask2).sum()
-    bone_union = np.logical_or(bone_mask1, bone_mask2).sum()
-    bone_iou = bone_intersection / bone_union if bone_union > 10 else 0
-    
-    # 3. Correlation of intensities in overlap region
+    # 2. Correlation of intensities in overlap region
     common = np.logical_and(mask1, mask2)
     if common.sum() > 100:
         vals1 = slice1[common].astype(np.float32)
@@ -387,79 +309,29 @@ def calculate_slice_similarity(slice1, slice2, threshold=-300, use_soft_tissue=F
     else:
         correlation = 0
     
-    # 4. Gradient matching (NEW)
-    grad1_x = sobel(slice1.astype(np.float32), axis=1)
-    grad1_y = sobel(slice1.astype(np.float32), axis=0)
-    grad2_x = sobel(slice2.astype(np.float32), axis=1)
-    grad2_y = sobel(slice2.astype(np.float32), axis=0)
+    # 3. Contour similarity (body boundary matching)
+    # Simple: compare the area of body regions
+    area1 = mask1.sum()
+    area2 = mask2.sum()
+    area_ratio = min(area1, area2) / max(area1, area2) if max(area1, area2) > 0 else 0
     
-    grad_mag1 = np.sqrt(grad1_x**2 + grad1_y**2)
-    grad_mag2 = np.sqrt(grad2_x**2 + grad2_y**2)
-    
-    if common.sum() > 100:
-        grad1_common = grad_mag1[common]
-        grad2_common = grad_mag2[common]
-        
-        if grad1_common.std() > 1e-6 and grad2_common.std() > 1e-6:
-            grad1_norm = (grad1_common - grad1_common.mean()) / grad1_common.std()
-            grad2_norm = (grad2_common - grad2_common.mean()) / grad2_common.std()
-            grad_corr = np.mean(grad1_norm * grad2_norm)
-            grad_corr = max(0, grad_corr)
-        else:
-            grad_corr = 0
-    else:
-        grad_corr = 0
-    
-    # ADAPTIVE WEIGHTING
-    if use_soft_tissue:
-        # Soft tissue mode (bone gap): focus on body shape + gradients
-        score = 0.50 * body_iou + 0.30 * correlation + 0.20 * grad_corr
-    else:
-        # Bone mode (normal): balance bone + body + correlation + gradients
-        score = 0.30 * bone_iou + 0.30 * body_iou + 0.30 * correlation + 0.10 * grad_corr
+    # Combined score
+    score = 0.4 * iou + 0.4 * correlation + 0.2 * area_ratio
     
     return score
 
 
-def detect_bone_gap(overlap_arr, bone_threshold=200):
-    """
-    Detect if overlap region has insufficient bone (e.g., rib-pelvis gap).
-    
-    Args:
-        overlap_arr: 3D numpy array (Z, Y, X) of overlap volume
-        bone_threshold: HU threshold for bone detection
-    
-    Returns:
-        True if bone gap detected (low bone fraction)
-    """
-    bone_mask = overlap_arr > bone_threshold
-    total_body_voxels = (overlap_arr > -300).sum()
-    
-    if total_body_voxels < 1000:
-        return False  # Insufficient data
-    
-    bone_fraction = bone_mask.sum() / total_body_voxels
-    
-    # Bone gap if <5% bone in overlap
-    is_gap = bone_fraction < 0.05
-    
-    if is_gap:
-        print(f"      → Bone gap detected (bone fraction: {bone_fraction*100:.1f}%)")
-    
-    return is_gap
-
-
 def multi_scale_z_search(torso_img, legs_img, verbose=True):
     """
-    Multi-scale search for optimal Z overlap with adaptive scoring.
+    Multi-scale search for optimal Z overlap to avoid local minima.
     
-    Returns:
-        (overlap_slices, score, confidence)
-        - overlap_slices: Number of slices to overlap
-        - score: Similarity score
-        - confidence: "HIGH" (>=0.5), "MEDIUM" (>=0.3), or "LOW" (<0.3)
+    Strategy:
+    1. Coarse search: Test many Z positions with large steps
+    2. Keep top N candidates
+    3. Fine search around each candidate
+    4. Return global best
     """
-    print("    Multi-scale Z overlap search with adaptive scoring...")
+    print("    Multi-scale Z overlap search...")
     
     torso_arr = sitk.GetArrayFromImage(torso_img)
     legs_arr = sitk.GetArrayFromImage(legs_img)
@@ -487,19 +359,12 @@ def multi_scale_z_search(torso_img, legs_img, verbose=True):
         torso_bottom = torso_arr[-overlap:]
         legs_top = legs_arr[:overlap]
         
-        # Detect if this is a bone gap region
-        overlap_volume = np.concatenate([torso_bottom, legs_top], axis=0)
-        use_soft_tissue = detect_bone_gap(overlap_volume)
-        
         # Calculate average similarity across overlap region
+        # Sample every few slices for speed
         sample_step = max(1, overlap // 10)
         scores = []
         for i in range(0, overlap, sample_step):
-            score = calculate_slice_similarity(
-                torso_bottom[i], 
-                legs_top[i], 
-                use_soft_tissue=use_soft_tissue
-            )
+            score = calculate_slice_similarity(torso_bottom[i], legs_top[i])
             scores.append(score)
         
         avg_score = np.mean(scores) if scores else 0
@@ -529,18 +394,10 @@ def multi_scale_z_search(torso_img, legs_img, verbose=True):
             torso_bottom = torso_arr[-overlap:]
             legs_top = legs_arr[:overlap]
             
-            # Detect bone gap
-            overlap_volume = np.concatenate([torso_bottom, legs_top], axis=0)
-            use_soft_tissue = detect_bone_gap(overlap_volume)
-            
             # More thorough scoring at fine level
             scores = []
             for i in range(0, overlap, max(1, overlap // 20)):
-                score = calculate_slice_similarity(
-                    torso_bottom[i], 
-                    legs_top[i],
-                    use_soft_tissue=use_soft_tissue
-                )
+                score = calculate_slice_similarity(torso_bottom[i], legs_top[i])
                 scores.append(score)
             
             avg_score = np.mean(scores) if scores else 0
@@ -563,18 +420,10 @@ def multi_scale_z_search(torso_img, legs_img, verbose=True):
         torso_bottom = torso_arr[-overlap:]
         legs_top = legs_arr[:overlap]
         
-        # Detect bone gap
-        overlap_volume = np.concatenate([torso_bottom, legs_top], axis=0)
-        use_soft_tissue = detect_bone_gap(overlap_volume)
-        
         # Full scoring
         scores = []
         for i in range(overlap):
-            score = calculate_slice_similarity(
-                torso_bottom[i], 
-                legs_top[i],
-                use_soft_tissue=use_soft_tissue
-            )
+            score = calculate_slice_similarity(torso_bottom[i], legs_top[i])
             scores.append(score)
         
         avg_score = np.mean(scores) if scores else 0
@@ -583,23 +432,10 @@ def multi_scale_z_search(torso_img, legs_img, verbose=True):
             best_score = avg_score
             best_overlap = overlap
     
-    # Determine confidence level
-    if best_score >= 0.5:
-        confidence = "HIGH"
-    elif best_score >= 0.3:
-        confidence = "MEDIUM"
-    else:
-        confidence = "LOW"
-    
     if verbose:
-        print(f"      Final: overlap={best_overlap} slices, score={best_score:.4f}, confidence={confidence}")
+        print(f"      Final: overlap={best_overlap} slices, score={best_score:.4f}")
     
-    if confidence == "LOW":
-        print(f"      ⚠️  WARNING: Low confidence alignment (score={best_score:.3f}). Results may be inaccurate.")
-    elif confidence == "MEDIUM":
-        print(f"      ⚠️  CAUTION: Medium confidence alignment (score={best_score:.3f}). Manual verification recommended.")
-    
-    return best_overlap, best_score, confidence
+    return best_overlap, best_score
 
 
 # ============================================================================
@@ -711,7 +547,7 @@ def check_rotation_needed(torso_img, legs_img):
 def stitch_body(name, volume_paths):
     """
     Complete pipeline to stitch a single body from ordered volumes.
-    Includes bed artifact removal and confidence validation.
+    Mimics OGbodystitcher.py logic but uses numbered files.
     
     Logic:
     - Lowest number = torso (reference, top part)
@@ -758,13 +594,6 @@ def stitch_body(name, volume_paths):
         pelvis = sitk.ReadImage(volume_paths[pelvis_num])
         print(f"    Volume {pelvis_num} (pelvis/middle): {pelvis.GetSize()}, {pelvis.GetSize()[2]} slices")
     
-    # ========== BED ARTIFACT REMOVAL ==========
-    print("\n  [Preprocessing] Removing bed artifacts...")
-    torso = remove_bed_artifact(torso)
-    legs = remove_bed_artifact(legs)
-    if pelvis is not None:
-        pelvis = remove_bed_artifact(pelvis)
-    
     # If pelvis exists, first stitch torso + pelvis
     if pelvis is not None:
         print("\n  [Step 1] Stitching Torso + Pelvis...")
@@ -776,8 +605,8 @@ def stitch_body(name, volume_paths):
         pelvis = align_xy_centers(torso, pelvis)
         pelvis = fine_tune_xy_alignment(torso, pelvis)
         
-        # Z search (with confidence)
-        overlap, score, confidence = multi_scale_z_search(torso, pelvis)
+        # Z search
+        overlap, score = multi_scale_z_search(torso, pelvis)
         
         # Stitch
         upper_body = stitch_with_linear_blend(torso, pelvis, overlap)
@@ -797,9 +626,9 @@ def stitch_body(name, volume_paths):
     legs = align_xy_centers(torso, legs)
     legs = fine_tune_xy_alignment(torso, legs)
     
-    # Multi-scale Z search (with confidence)
+    # Multi-scale Z search
     print("\n  Z Overlap Search:")
-    overlap, score, confidence = multi_scale_z_search(torso, legs)
+    overlap, score = multi_scale_z_search(torso, legs)
     
     # Stitch
     print("\n  Final Stitching:")
@@ -807,11 +636,6 @@ def stitch_body(name, volume_paths):
     
     print()
     print(f"  ✓ Final size: {result.GetSize()}")
-    print(f"  ✓ Alignment confidence: {confidence} (score={score:.3f})")
-    
-    if confidence == "LOW":
-        print(f"\n  ⚠️  WARNING: Low confidence stitching for {name}")
-        print(f"      Manual inspection strongly recommended!")
     
     return result
 
@@ -897,7 +721,7 @@ def main(visualize=True):
     print("=" * 80)
     print("IMPROVED BODY STITCHER")
     print("With XY Alignment + Multi-Scale Z Search")
-    print("Loading from nifti-ordered folder")
+    print("Loading from nifti-resampled folder")
     print("=" * 80)
     print()
     
@@ -913,7 +737,7 @@ def main(visualize=True):
         
         try:
             # Load ordered volumes
-            print("\n  Loading ordered volumes from nifti-ordered folder...")
+            print("\n  Loading ordered volumes from nifti-resampled folder...")
             volume_paths = load_ordered_volumes(patient_name)
             
             if volume_paths is None:
